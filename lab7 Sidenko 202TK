@@ -1,0 +1,507 @@
+using System;
+using System.Windows.Forms;
+using System.Drawing;
+
+namespace MultiWindowTextEditor
+{
+    // Основний клас програми, який містить точку входу
+    static class Program
+    {
+        // Метод Main – початкова точка виконання програми
+        [STAThread]
+        static void Main()
+        {
+            // Вмикаємо сучасні візуальні стилі для кращої графіки
+            Application.EnableVisualStyles();
+            // Налаштовуємо сумісне рендерування тексту
+            Application.SetCompatibleTextRenderingDefault(false);
+            // Запускаємо головну форму, яка є контейнером для інших документів
+            Application.Run(new MainForm());
+        }
+    }
+
+    // Головна форма додатку, яка виступає як MDI-контейнер (багатовіконний інтерфейс)
+    public class MainForm : Form
+    {
+        // Елемент для розміщення верхнього меню
+        private MenuStrip menuStrip;
+
+        // Конструктор головної форми
+        public MainForm()
+        {
+            // Позначаємо форму як MDI контейнер, що дозволяє відкривати дочірні вікна
+            this.IsMdiContainer = true;
+            // Встановлюємо максимальний розмір вікна при запуску
+            this.WindowState = FormWindowState.Maximized;
+            // Викликаємо метод для ініціалізації всіх компонентів інтерфейсу
+            InitializeComponents();
+        }
+
+        // Метод для створення та налаштування елементів інтерфейсу
+        private void InitializeComponents()
+        {
+            // Створення MenuStrip для головного меню
+            menuStrip = new MenuStrip();
+
+            // ===== Формування меню "Файл" =====
+            ToolStripMenuItem fileMenu = new ToolStripMenuItem("File");
+            // Створення пунктів меню для роботи з файлами та їх прив'язка до обробників подій
+            ToolStripMenuItem newMenuItem = new ToolStripMenuItem("New", null, NewFile_Click);
+            ToolStripMenuItem openMenuItem = new ToolStripMenuItem("Open", null, OpenFile_Click);
+            ToolStripMenuItem saveMenuItem = new ToolStripMenuItem("Save", null, SaveFile_Click);
+            ToolStripMenuItem saveAsMenuItem = new ToolStripMenuItem("Save As", null, SaveAsFile_Click);
+            ToolStripMenuItem exitMenuItem = new ToolStripMenuItem("Exit", null, Exit_Click);
+            // Додавання пунктів меню та розділювача для логічного групування
+            fileMenu.DropDownItems.AddRange(new ToolStripItem[] {
+                newMenuItem, openMenuItem, saveMenuItem, saveAsMenuItem,
+                new ToolStripSeparator(), exitMenuItem
+            });
+
+            // ===== Формування меню "Редагування" =====
+            ToolStripMenuItem editMenu = new ToolStripMenuItem("Edit");
+            // Пункти для базових операцій редагування
+            ToolStripMenuItem undoMenuItem = new ToolStripMenuItem("Undo", null, Undo_Click);
+            ToolStripMenuItem redoMenuItem = new ToolStripMenuItem("Redo", null, Redo_Click);
+            ToolStripMenuItem cutMenuItem = new ToolStripMenuItem("Cut", null, Cut_Click);
+            ToolStripMenuItem copyMenuItem = new ToolStripMenuItem("Copy", null, Copy_Click);
+            ToolStripMenuItem pasteMenuItem = new ToolStripMenuItem("Paste", null, Paste_Click);
+            ToolStripMenuItem selectAllMenuItem = new ToolStripMenuItem("Select All", null, SelectAll_Click);
+            // Групування операцій редагування за допомогою розділювачів
+            editMenu.DropDownItems.AddRange(new ToolStripItem[] {
+                undoMenuItem, redoMenuItem, new ToolStripSeparator(),
+                cutMenuItem, copyMenuItem, pasteMenuItem,
+                new ToolStripSeparator(), selectAllMenuItem
+            });
+
+            // ===== Формування меню "Формат" =====
+            ToolStripMenuItem formatMenu = new ToolStripMenuItem("Format");
+            // Пункти для зміни шрифту та вирівнювання тексту
+            ToolStripMenuItem fontMenuItem = new ToolStripMenuItem("Font", null, Font_Click);
+            ToolStripMenuItem alignLeftMenuItem = new ToolStripMenuItem("Align Left", null, AlignLeft_Click);
+            ToolStripMenuItem alignCenterMenuItem = new ToolStripMenuItem("Align Center", null, AlignCenter_Click);
+            ToolStripMenuItem alignRightMenuItem = new ToolStripMenuItem("Align Right", null, AlignRight_Click);
+            // Додавання пунктів з групуванням за допомогою розділювачів
+            formatMenu.DropDownItems.AddRange(new ToolStripItem[] {
+                fontMenuItem, new ToolStripSeparator(),
+                alignLeftMenuItem, alignCenterMenuItem, alignRightMenuItem
+            });
+
+            // ===== Формування меню "Інструменти" =====
+            ToolStripMenuItem toolsMenu = new ToolStripMenuItem("Tools");
+            // Пункти для додаткових функцій: вставка зображень і підсвічування синтаксису
+            ToolStripMenuItem insertImageMenuItem = new ToolStripMenuItem("Insert Image", null, InsertImage_Click);
+            ToolStripMenuItem syntaxHighlightMenuItem = new ToolStripMenuItem("Syntax Highlight", null, SyntaxHighlight_Click);
+            toolsMenu.DropDownItems.AddRange(new ToolStripItem[] { insertImageMenuItem, syntaxHighlightMenuItem });
+
+            // ===== Формування меню "Мова" =====
+            ToolStripMenuItem languageMenu = new ToolStripMenuItem("Language");
+            // Додавання опцій для зміни мови інтерфейсу
+            ToolStripMenuItem englishMenuItem = new ToolStripMenuItem("English", null, English_Click);
+            ToolStripMenuItem ukrainianMenuItem = new ToolStripMenuItem("Українська", null, Ukrainian_Click);
+            languageMenu.DropDownItems.AddRange(new ToolStripItem[] { englishMenuItem, ukrainianMenuItem });
+
+            // ===== Додавання всіх головних пунктів до MenuStrip =====
+            menuStrip.Items.AddRange(new ToolStripItem[] { fileMenu, editMenu, formatMenu, toolsMenu, languageMenu });
+            // Встановлюємо MenuStrip як головне меню форми
+            this.MainMenuStrip = menuStrip;
+            // Додаємо MenuStrip до форми
+            this.Controls.Add(menuStrip);
+        }
+
+        // Допоміжна властивість для отримання активного дочірнього вікна (документа)
+        private ChildForm ActiveChild
+        {
+            get { return this.ActiveMdiChild as ChildForm; }
+        }
+
+        // ===== Обробники подій для меню "Файл" =====
+        // Обробник створення нового документа
+        private void NewFile_Click(object sender, EventArgs e)
+        {
+            // Створюємо новий екземпляр ChildForm (документу)
+            ChildForm child = new ChildForm();
+            // Встановлюємо його як дочірню форму для MDI
+            child.MdiParent = this;
+            // Присвоюємо заголовок за замовчуванням
+            child.Text = "New Document";
+            // Відображаємо форму
+            child.Show();
+        }
+
+        // Обробник відкриття файлу з диска
+        private void OpenFile_Click(object sender, EventArgs e)
+        {
+            // Перевірка, чи існує активний документ
+            if (ActiveChild != null)
+            {
+                // Створення діалогового вікна для вибору файлу
+                OpenFileDialog ofd = new OpenFileDialog();
+                // Встановлюємо фільтр для відбору підтримуваних типів файлів
+                ofd.Filter = "Rich Text Format|*.rtf|Text Files|*.txt|All Files|*.*";
+                if (ofd.ShowDialog() == DialogResult.OK)
+                {
+                    try
+                    {
+                        // Завантаження файлу в залежності від розширення:
+                        // Якщо файл має розширення .rtf, завантажуємо як RTF, інакше як звичайний текст
+                        if (ofd.FileName.EndsWith(".rtf"))
+                            ActiveChild.RichTextBox.LoadFile(ofd.FileName, RichTextBoxStreamType.RichText);
+                        else
+                            ActiveChild.RichTextBox.LoadFile(ofd.FileName, RichTextBoxStreamType.PlainText);
+                        // Зберігаємо ім'я файлу для подальшого збереження
+                        ActiveChild.FileName = ofd.FileName;
+                        // Змінюємо заголовок вікна на ім'я файлу
+                        ActiveChild.Text = System.IO.Path.GetFileName(ofd.FileName);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Виводимо повідомлення про помилку, якщо відкриття файлу не вдалося
+                        MessageBox.Show("Error opening file: " + ex.Message);
+                    }
+                }
+            }
+        }
+
+        // Обробник збереження поточного файлу
+        private void SaveFile_Click(object sender, EventArgs e)
+        {
+            if (ActiveChild != null)
+            {
+                // Якщо ім'я файлу ще не задане – викликаємо збереження під іншим іменем
+                if (string.IsNullOrEmpty(ActiveChild.FileName))
+                {
+                    SaveAsFile_Click(sender, e);
+                }
+                else
+                {
+                    try
+                    {
+                        // Збереження документа у форматі RTF
+                        ActiveChild.RichTextBox.SaveFile(ActiveChild.FileName, RichTextBoxStreamType.RichText);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show("Error saving file: " + ex.Message);
+                    }
+                }
+            }
+        }
+
+        // Обробник збереження файлу під іншим іменем (Save As)
+        private void SaveAsFile_Click(object sender, EventArgs e)
+        {
+            if (ActiveChild != null)
+            {
+                // Створення діалогового вікна для збереження файлу
+                SaveFileDialog sfd = new SaveFileDialog();
+                // Фільтр: збереження тільки у форматі RTF
+                sfd.Filter = "Rich Text Format|*.rtf";
+                if (sfd.ShowDialog() == DialogResult.OK)
+                {
+                    try
+                    {
+                        // Збереження вмісту RichTextBox у вказаному файлі
+                        ActiveChild.RichTextBox.SaveFile(sfd.FileName, RichTextBoxStreamType.RichText);
+                        // Оновлення імені файлу та заголовку форми
+                        ActiveChild.FileName = sfd.FileName;
+                        ActiveChild.Text = System.IO.Path.GetFileName(sfd.FileName);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show("Error saving file: " + ex.Message);
+                    }
+                }
+            }
+        }
+
+        // Обробник виходу з додатку
+        private void Exit_Click(object sender, EventArgs e)
+        {
+            // Закриваємо головну форму, що завершить роботу додатку
+            this.Close();
+        }
+
+        // ===== Обробники подій для меню "Редагування" =====
+        private void Undo_Click(object sender, EventArgs e)
+        {
+            // Відміна останньої операції, якщо вона доступна
+            if (ActiveChild != null && ActiveChild.RichTextBox.CanUndo)
+                ActiveChild.RichTextBox.Undo();
+        }
+        private void Redo_Click(object sender, EventArgs e)
+        {
+            // Повтор операції, якщо вона доступна
+            if (ActiveChild != null && ActiveChild.RichTextBox.CanRedo)
+                ActiveChild.RichTextBox.Redo();
+        }
+        private void Cut_Click(object sender, EventArgs e)
+        {
+            // Вирізаємо виділений текст та копіюємо його в буфер обміну
+            if (ActiveChild != null)
+                ActiveChild.RichTextBox.Cut();
+        }
+        private void Copy_Click(object sender, EventArgs e)
+        {
+            // Копіюємо виділений текст в буфер обміну
+            if (ActiveChild != null)
+                ActiveChild.RichTextBox.Copy();
+        }
+        private void Paste_Click(object sender, EventArgs e)
+        {
+            // Вставляємо вміст буфера обміну в документ
+            if (ActiveChild != null)
+                ActiveChild.RichTextBox.Paste();
+        }
+        private void SelectAll_Click(object sender, EventArgs e)
+        {
+            // Виділяємо весь текст в поточному документі
+            if (ActiveChild != null)
+                ActiveChild.RichTextBox.SelectAll();
+        }
+
+        // ===== Обробники подій для меню "Формат" =====
+        private void Font_Click(object sender, EventArgs e)
+        {
+            if (ActiveChild != null)
+            {
+                // Відкриваємо стандартний діалог для вибору шрифту
+                FontDialog fontDialog = new FontDialog();
+                if (fontDialog.ShowDialog() == DialogResult.OK)
+                {
+                    // Застосовуємо обраний шрифт до виділеного тексту
+                    ActiveChild.RichTextBox.SelectionFont = fontDialog.Font;
+                }
+            }
+        }
+        private void AlignLeft_Click(object sender, EventArgs e)
+        {
+            if (ActiveChild != null)
+                // Вирівнюємо виділений текст по лівому краю
+                ActiveChild.RichTextBox.SelectionAlignment = HorizontalAlignment.Left;
+        }
+        private void AlignCenter_Click(object sender, EventArgs e)
+        {
+            if (ActiveChild != null)
+                // Вирівнюємо текст по центру
+                ActiveChild.RichTextBox.SelectionAlignment = HorizontalAlignment.Center;
+        }
+        private void AlignRight_Click(object sender, EventArgs e)
+        {
+            if (ActiveChild != null)
+                // Вирівнюємо текст по правому краю
+                ActiveChild.RichTextBox.SelectionAlignment = HorizontalAlignment.Right;
+        }
+
+        // ===== Обробники подій для меню "Інструменти" =====
+        private void InsertImage_Click(object sender, EventArgs e)
+        {
+            if (ActiveChild != null)
+            {
+                // Створення діалогового вікна для вибору зображення
+                OpenFileDialog ofd = new OpenFileDialog();
+                // Фільтр дозволених форматів зображень
+                ofd.Filter = "Image Files|*.bmp;*.jpg;*.jpeg;*.png;*.gif";
+                if (ofd.ShowDialog() == DialogResult.OK)
+                {
+                    try
+                    {
+                        // Завантаження зображення з обраного файлу
+                        Image img = Image.FromFile(ofd.FileName);
+                        // Копіюємо зображення в буфер обміну
+                        Clipboard.SetImage(img);
+                        // Вставляємо зображення в RichTextBox через буфер обміну
+                        ActiveChild.RichTextBox.Paste();
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show("Error inserting image: " + ex.Message);
+                    }
+                }
+            }
+        }
+
+        private void SyntaxHighlight_Click(object sender, EventArgs e)
+        {
+            if (ActiveChild != null)
+            {
+                // Викликаємо метод підсвічування синтаксису у поточному документі
+                ActiveChild.PerformSyntaxHighlighting();
+            }
+        }
+
+        // ===== Обробники подій для меню "Мова" =====
+        private void English_Click(object sender, EventArgs e)
+        {
+            // Зміна мови інтерфейсу на англійську
+            UpdateLanguage("en");
+        }
+
+        private void Ukrainian_Click(object sender, EventArgs e)
+        {
+            // Зміна мови інтерфейсу на українську
+            UpdateLanguage("uk");
+        }
+
+        // Метод для оновлення мови інтерфейсу із рекурсивним обходом усіх пунктів меню
+        private void UpdateLanguage(string lang)
+        {
+            // Словник перекладів: ключ – початковий текст, значення – переклад.
+            Dictionary<string, string> translations = new Dictionary<string, string>();
+
+            if (lang == "uk")
+            {
+                translations = new Dictionary<string, string>()
+        {
+            {"File", "Файл"},
+            {"New", "Новий"},
+            {"Open", "Відкрити"},
+            {"Save", "Зберегти"},
+            {"Save As", "Зберегти як"},
+            {"Exit", "Вихід"},
+            {"Edit", "Редагування"},
+            {"Undo", "Відмінити"},
+            {"Redo", "Повторити"},
+            {"Cut", "Вирізати"},
+            {"Copy", "Копіювати"},
+            {"Paste", "Вставити"},
+            {"Select All", "Виділити все"},
+            {"Format", "Формат"},
+            {"Font", "Шрифт"},
+            {"Align Left", "Вирівняти зліва"},
+            {"Align Center", "Вирівняти по центру"},
+            {"Align Right", "Вирівняти справа"},
+            {"Tools", "Інструменти"},
+            {"Insert Image", "Вставити зображення"},
+            {"Syntax Highlight", "Підсвітити синтаксис"},
+            {"Language", "Мова"},
+            {"English", "Англійська"},
+            {"Українська", "Українська"} // Якщо вже українською, залишаємо без змін
+        };
+            }
+            else if (lang == "en")
+            {
+                translations = new Dictionary<string, string>()
+        {
+            {"Файл", "File"},
+            {"Новий", "New"},
+            {"Відкрити", "Open"},
+            {"Зберегти", "Save"},
+            {"Зберегти як", "Save As"},
+            {"Вихід", "Exit"},
+            {"Редагування", "Edit"},
+            {"Відмінити", "Undo"},
+            {"Повторити", "Redo"},
+            {"Вирізати", "Cut"},
+            {"Копіювати", "Copy"},
+            {"Вставити", "Paste"},
+            {"Виділити все", "Select All"},
+            {"Формат", "Format"},
+            {"Шрифт", "Font"},
+            {"Вирівняти зліва", "Align Left"},
+            {"Вирівняти по центру", "Align Center"},
+            {"Вирівняти справа", "Align Right"},
+            {"Інструменти", "Tools"},
+            {"Вставити зображення", "Insert Image"},
+            {"Підсвітити синтаксис", "Syntax Highlight"},
+            {"Мова", "Language"},
+            {"Англійська", "English"},
+            {"Українська", "Українська"} // Якщо вибрано англійську, українську залишаємо незмінною
+        };
+            }
+
+            // Рекурсивний метод для оновлення тексту пункту меню та його підпунктів
+            void UpdateMenuItem(ToolStripMenuItem item)
+            {
+                if (translations.ContainsKey(item.Text))
+                {
+                    item.Text = translations[item.Text];
+                }
+                // Оновлюємо всі підпункти, якщо вони є
+                foreach (ToolStripItem subItem in item.DropDownItems)
+                {
+                    if (subItem is ToolStripMenuItem subMenuItem)
+                    {
+                        UpdateMenuItem(subMenuItem);
+                    }
+                }
+            }
+
+            // Обходимо всі елементи головного меню та оновлюємо їх за допомогою рекурсивного методу
+            foreach (ToolStripItem item in menuStrip.Items)
+            {
+                if (item is ToolStripMenuItem menuItem)
+                {
+                    UpdateMenuItem(menuItem);
+                }
+            }
+        }
+
+
+        // Дочірня форма, яка представляє окремий документ з можливістю редагування
+        public class ChildForm : Form
+        {
+            // Компонент для редагування тексту
+            public RichTextBox RichTextBox { get; private set; }
+            // Властивість для збереження шляху до файлу документа
+            public string FileName { get; set; }
+
+            // Конструктор дочірньої форми
+            public ChildForm()
+            {
+                // Встановлення початкового розміру вікна документа
+                this.Width = 800;
+                this.Height = 600;
+                // Ініціалізація RichTextBox та розміщення його на всю форму
+                RichTextBox = new RichTextBox();
+                RichTextBox.Dock = DockStyle.Fill;
+                this.Controls.Add(RichTextBox);
+            }
+
+            // Метод для базового підсвічування синтаксису для C-подібних мов
+            public void PerformSyntaxHighlighting()
+            {
+                // Визначаємо перелік ключових слів, які потрібно підсвітити
+                string[] keywords = new string[] { "int", "void", "if", "else", "for", "while", "return", "public", "private", "class", "static", "using", "namespace", "new" };
+
+                // Зберігаємо поточну позицію курсора та розмір виділення, щоб повернути їх після форматування
+                int selectionStart = RichTextBox.SelectionStart;
+                int selectionLength = RichTextBox.SelectionLength;
+
+                // Скидаємо колір усього тексту до чорного для усунення попередніх форматувань
+                RichTextBox.SelectAll();
+                RichTextBox.SelectionColor = Color.Black;
+
+                // Проходимо по кожному ключовому слову
+                foreach (string keyword in keywords)
+                {
+                    // Ініціалізуємо початковий індекс для пошуку
+                    int startIndex = 0;
+                    while (startIndex < RichTextBox.TextLength)
+                    {
+                        // Шукаємо повне входження ключового слова у тексті
+                        int wordStartIndex = RichTextBox.Find(keyword, startIndex, RichTextBox.TextLength, RichTextBoxFinds.WholeWord);
+                        if (wordStartIndex != -1)
+                        {
+                            // Виділяємо знайдене слово
+                            RichTextBox.Select(wordStartIndex, keyword.Length);
+                            // Змінюємо його колір на синій для виділення
+                            RichTextBox.SelectionColor = Color.Blue;
+                            // Оновлюємо індекс для пошуку наступного входження
+                            startIndex = wordStartIndex + keyword.Length;
+                        }
+                        else
+                        {
+                            // Якщо більше входжень немає, виходимо з циклу
+                            break;
+                        }
+                    }
+                }
+
+                // Повертаємо початкове виділення та позицію курсора, щоб користувач не втратив контекст роботи
+                RichTextBox.Select(selectionStart, selectionLength);
+                // Встановлюємо стандартний чорний колір для поточного виділення
+                RichTextBox.SelectionColor = Color.Black;
+            }
+        }
+    }
+}
